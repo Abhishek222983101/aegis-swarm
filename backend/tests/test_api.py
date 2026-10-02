@@ -116,3 +116,33 @@ def test_server_prefix_is_stripped_for_http(client):
 def test_bare_path_still_works_without_prefix(client):
     r = client.get("/health")
     assert r.status_code == 200
+
+
+def test_reset_restores_a_dead_swarm_to_working_state(client):
+    # Kill every agent, confirm the swarm is actually dead, then reset and
+    # confirm it's fully recovered — this is the exact scenario a judge hits
+    # by clicking every fault button repeatedly.
+    state_before = client.get("/state").json()
+    for agent in state_before["agents"]:
+        client.post("/inject/agent-failure", json={"agent_id": agent["id"]})
+    dead_state = client.get("/state").json()
+    assert all(a["status"] == "lost" for a in dead_state["agents"])
+
+    r = client.post("/reset")
+    assert r.status_code == 200
+    assert r.json()["agents"] == 4
+
+    fresh_state = client.get("/state").json()
+    assert all(a["status"] == "nominal" for a in fresh_state["agents"])
+    assert all(a["battery"] > 90 for a in fresh_state["agents"])
+    assert client.get("/ledger").json() == []  # stale decisions cleared too
+
+
+def test_mission_templates_endpoint_returns_ready_to_use_prompts(client):
+    r = client.get("/mission-templates")
+    assert r.status_code == 200
+    templates = r.json()
+    assert len(templates) >= 3
+    for t in templates:
+        assert "label" in t and "objective" in t
+        assert len(t["objective"]) > 10  # not a placeholder stub

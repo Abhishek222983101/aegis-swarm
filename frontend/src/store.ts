@@ -19,6 +19,7 @@ interface AegisStore {
   setMissionPlan: (p: MissionPlan) => void
   selectAgent: (id: string | null) => void
   setReplayMode: (on: boolean) => void
+  resetClientState: () => void
 }
 
 export const useAegisStore = create<AegisStore>((set) => ({
@@ -56,4 +57,6 @@ export const useAegisStore = create<AegisStore>((set) => ({
   setMissionPlan: (p) => set({ missionPlan: p }),
   selectAgent: (id) => set({ selectedAgentId: id }),
   setReplayMode: (on) => set({ replayMode: on }),
+  resetClientState: () =>
+    set({ decisions: [], escalations: {}, missionPlan: null, selectedAgentId: null, replayMode: false }),
 }))

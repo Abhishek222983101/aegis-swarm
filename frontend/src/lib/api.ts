@@ -29,4 +29,10 @@ export const api = {
   postMission: (objective: string) => postJSON('/mission', { objective }),
   respondEscalation: (id: string, decision: 'approve' | 'override') =>
     postJSON(`/escalation/${id}/respond`, { decision }),
+  reset: () => postJSON('/reset', {}),
+  getMissionTemplates: async (): Promise<{ label: string; objective: string }[]> => {
+    const res = await fetch(`${BASE}/mission-templates`)
+    if (!res.ok) throw new Error(`templates fetch failed: ${res.status}`)
+    return res.json()
+  },
 }

@@ -10,6 +10,7 @@ export function useAegisSocket() {
   const pushDecision = useAegisStore((s) => s.pushDecision)
   const resolveEscalation = useAegisStore((s) => s.resolveEscalation)
   const setMissionPlan = useAegisStore((s) => s.setMissionPlan)
+  const resetClientState = useAegisStore((s) => s.resetClientState)
 
   const wsRef = useRef<WebSocket | null>(null)
   const stoppedRef = useRef(false)
@@ -51,6 +52,9 @@ export function useAegisSocket() {
             break
           case 'mission_plan':
             setMissionPlan(msg.data)
+            break
+          case 'reset':
+            resetClientState()
             break
           default:
             break

@@ -64,3 +64,4 @@ export type ServerMessage =
   | { type: 'escalation_resolved'; data: { id: string; operator_decision: string } }
   | { type: 'mission_plan'; data: MissionPlan }
   | { type: 'event'; data: Record<string, unknown> }
+  | { type: 'reset'; data: Record<string, never> }

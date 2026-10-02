@@ -96,6 +96,13 @@ class DecisionLedger:
         ]
         return [dict(zip(cols, row)) for row in rows]
 
+    def clear(self) -> None:
+        """Wipe all records — used by the demo RESET action so a judge who
+        breaks the swarm doesn't also have to stare at a stale decision feed
+        from the previous, now-irrelevant run."""
+        self._conn.execute("DELETE FROM decision_log")
+        self._conn.commit()
+
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM decision_log").fetchone()[0]
 

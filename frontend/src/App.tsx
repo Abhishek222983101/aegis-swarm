@@ -6,6 +6,8 @@ import { ScenarioInjector } from './components/ScenarioInjector'
 import { EscalationConsole } from './components/EscalationConsole'
 import { MissionIntake } from './components/MissionIntake'
 import { ReplayToggle } from './components/ReplayToggle'
+import { ResetButton } from './components/ResetButton'
+import { HelpGuide } from './components/HelpGuide'
 import { useAegisStore } from './store'
 import { useAegisSocket } from './lib/useAegisSocket'
 
@@ -20,8 +22,10 @@ export default function App() {
           AEGIS <span className="text-amber">/</span> MISSION ORCHESTRATION
           {replayMode && <span className="ml-3 text-sm text-signal-red">● REPLAY MODE</span>}
         </h1>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <HelpGuide />
           <ReplayToggle />
+          <ResetButton />
           <p className="mono-tag text-neutral-500">EL-05 · AUTONOMOUS SWARM PROTOTYPE</p>
         </div>
       </header>

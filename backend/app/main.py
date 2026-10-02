@@ -19,6 +19,7 @@ import random
 from app.ledger import DecisionLedger, DecisionRecord
 from app.ml.inference import Allocator
 from app.ml.planner import decompose_mission
+from app.ml.risk_model import RiskClassifier
 from app.ml.tasks import Task
 from app.sim import faults
 from app.sim.faults import FaultTargetError
@@ -63,11 +64,25 @@ class AppState:
         self.world.spawn_default_swarm()
         self.ledger = DecisionLedger()
         self.allocator = Allocator()
-        self.supervisor = Supervisor(self.world, self.ledger, self.allocator)
+        self.risk_classifier = RiskClassifier()
+        self.supervisor = Supervisor(self.world, self.ledger, self.allocator, self.risk_classifier)
         self.comm_scheduler = CommScheduler(bandwidth_per_tick=3)
         self.manager = ConnectionManager()
         self.replay_buffer: list[dict] = []
         self.tick_running = False
+
+    def reset(self) -> None:
+        """Demo-safety recovery: when a judge (or a test run) kills the whole
+        swarm or wedges it into a dead-end state, this gets back to a clean,
+        working demo in one click instead of needing someone to restart the
+        server. Keeps the same Allocator/RiskClassifier (already-loaded
+        trained models, no need to reload) but rebuilds everything stateful."""
+        self.world = World()
+        self.world.spawn_default_swarm()
+        self.supervisor = Supervisor(self.world, self.ledger, self.allocator, self.risk_classifier)
+        self.comm_scheduler = CommScheduler(bandwidth_per_tick=3)
+        self.ledger.clear()
+        self.replay_buffer.clear()
 
 
 state = AppState()
@@ -149,6 +164,43 @@ async def fault_target_error_handler(request: Request, exc: FaultTargetError):
     # Scenario Injector clicks must never surface a raw 500/traceback to a
     # non-technical operator — always a clean, explainable JSON error.
     return JSONResponse(status_code=404, content={"error": str(exc)})
+
+
+@app.post("/reset")
+async def reset_simulation():
+    """One-click recovery. Call this when the swarm is dead/stuck/confusing
+    instead of restarting the whole server — judges and teammates need this,
+    not just developers with terminal access."""
+    state.reset()
+    snapshot = {"type": "state", "data": state.world.state_snapshot()}
+    await state.manager.broadcast(snapshot)
+    await state.manager.broadcast({"type": "reset", "data": {}})
+    return {"status": "reset", "agents": len(state.world.agents)}
+
+
+MISSION_TEMPLATES = [
+    {
+        "label": "Scout + Relay",
+        "objective": "Scout Sector 7 and establish a comm relay",
+    },
+    {
+        "label": "Supply Run",
+        "objective": "Scout Zone 3, then deliver medical supplies there",
+    },
+    {
+        "label": "Search & Rescue",
+        "objective": "Scout and search Sector 12 for survivors, prioritize speed",
+    },
+    {
+        "label": "Perimeter Patrol",
+        "objective": "Patrol Sector 4 and establish a communication relay over the area",
+    },
+]
+
+
+@app.get("/mission-templates")
+async def get_mission_templates():
+    return MISSION_TEMPLATES
 
 
 @app.get("/health")
