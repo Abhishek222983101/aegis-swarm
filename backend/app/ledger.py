@@ -8,12 +8,18 @@ edited after insert, only ever appended.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "aegis.db"
+# Serverless platforms (Vercel included) ship the app directory read-only —
+# only /tmp is writable at runtime. Defaulting there (not next to the app
+# code) means this works identically in local dev and in production without
+# an environment-specific branch. AEGIS_DB_PATH overrides for anyone who
+# wants a persistent/project-local file during local development.
+DB_PATH = Path(os.environ.get("AEGIS_DB_PATH", "/tmp/aegis.db"))
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS decision_log (

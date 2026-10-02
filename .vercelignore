@@ -5,9 +5,10 @@ backend/.pytest_cache/
 *.pyc
 frontend/node_modules/
 frontend/dist/
-.vercel/
-*.onnx
+.git/
 *.db
 .~lock.*
-backend/models/*.onnx
-.vercel
+backend/requirements-ml.txt
+backend/requirements-dev.txt
+template.pptx
+template-thumbs.jpg
