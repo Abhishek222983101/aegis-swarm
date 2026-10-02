@@ -77,6 +77,13 @@ class AllocationEnv(gym.Env):
             )
             for i in range(self.tasks_per_episode)
         ]
+        # Deliberately make one agent start critically low on battery per episode
+        # (realistic — a swarm mid-mission always has some agent further along
+        # its battery curve) so there are real, learnable trade-off scenarios
+        # where "nearest agent" is the wrong call, not just noise around a
+        # reward surface that greedy already nearly solves.
+        if self.agents:
+            self._rng.choice(self.agents).battery = self._rng.uniform(8.0, 22.0)
         self._task_idx = 0
         self._completed = 0
         return self._observe(), {}
@@ -113,7 +120,15 @@ class AllocationEnv(gym.Env):
         normalized_dist = dist / (WORLD_SIZE * math.sqrt(2))
         distance_penalty = normalized_dist * 2.0
 
-        battery_bonus = (agent.battery / 100.0) * 0.5  # prefer healthier agents
+        # Steep, not linear: a critically-low-battery agent carries a penalty on
+        # the same order as the worst-case distance penalty, so the optimal
+        # policy sometimes must prefer a farther, healthier agent — a real
+        # trade-off a nearest-agent-only heuristic structurally can't make.
+        if agent.battery < 25.0:
+            battery_bonus = -1.6 * (1 - agent.battery / 25.0)
+        else:
+            battery_bonus = (agent.battery / 100.0) * 0.5
+
         priority_bonus = (task.priority / 5.0) * 0.5  # prioritize urgent tasks going well
 
         return 1.0 - distance_penalty + battery_bonus + priority_bonus

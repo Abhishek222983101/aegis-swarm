@@ -22,10 +22,15 @@ class Allocator:
     is available, Hungarian-optimal baseline otherwise — same call signature
     either way, so callers (Supervisor) never need to know which is active."""
 
-    def __init__(self, model_path: Path | str | None = DEFAULT_MODEL_PATH):
+    def __init__(self, model_path: Path | str | None = DEFAULT_MODEL_PATH, trained_n_agents: int = 4):
         self.model_path = Path(model_path) if model_path else None
         self.session = None
         self.backend = "hungarian_baseline"
+        # The ONNX graph's input size is fixed at export time to this many agent
+        # "slots" (app/ml/env.py's AllocationEnv n_agents). Outside that exact
+        # candidate count the model cannot run at all — ONNX Runtime raises on
+        # shape mismatch, it does not silently pad or truncate.
+        self.trained_n_agents = trained_n_agents
         if self.model_path and self.model_path.exists():
             try:
                 import onnxruntime as ort
@@ -39,7 +44,13 @@ class Allocator:
                 self.backend = "hungarian_baseline"
 
     def allocate(self, tasks: list[Task], agents: list[Agent]) -> dict[str, str]:
-        if self.session is None:
+        # Outside the trained envelope (e.g. a fault just took an agent down,
+        # shrinking the live candidate pool below what the model was trained
+        # on) fall back to the baseline rather than crash — this is exactly
+        # the scenario class the fault-injection demo exercises constantly,
+        # so this path is not a rare edge case, it must be solid.
+        available = [a for a in agents if a.status != AgentStatus.LOST]
+        if self.session is None or len(available) != self.trained_n_agents:
             return hungarian_assign(tasks, agents)
         return self._allocate_with_policy(tasks, agents)
 

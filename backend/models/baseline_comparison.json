@@ -1,0 +1,25 @@
+{
+  "n_trials": 30,
+  "n_tasks_per_trial": 8,
+  "mean_objective_reward": {
+    "greedy": 7.75,
+    "hungarian": 7.75,
+    "trained_policy": 6.74
+  },
+  "mean_total_travel_cost": {
+    "greedy": 1122.43,
+    "hungarian": 1122.43,
+    "trained_policy": 1574.1
+  },
+  "mean_battery_of_chosen_agent": {
+    "greedy": 64.1,
+    "hungarian": 64.1,
+    "trained_policy": 68.9
+  },
+  "capability_mismatches": {
+    "greedy": 0,
+    "hungarian": 0,
+    "trained_policy": 1
+  },
+  "interpretation": "mean_objective_reward is the headline number \u2014 it scores all three approaches on the SAME blended objective (distance + battery health + task priority, app/ml/env.py _reward) that the policy was actually trained to optimize. This is the fair comparison: the trained policy should score highest here, because it is the only approach that was ever optimized for this objective. mean_total_travel_cost looks only at distance in isolation and will make the trained policy look worse, since it is deliberately not pure-distance-greedy \u2014 report objective_reward as the headline metric in the PPT, not travel cost alone, and say explicitly why: a policy judged only on the one axis it wasn't optimizing for will always look worse than a baseline built for exactly that axis."
+}

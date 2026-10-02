@@ -9,3 +9,4 @@ frontend/dist/
 *.onnx
 *.db
 .~lock.*
+backend/models/*.onnx
