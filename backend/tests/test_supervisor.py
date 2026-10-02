@@ -113,6 +113,35 @@ def test_low_feasibility_forces_termination_regardless_of_event_type(supervisor)
     assert record.escalated is True
 
 
+def test_risk_classifier_escalates_a_low_battery_isolated_reassignment(tmp_path):
+    # Regression/integration test for the risk-classifier wiring: a reassignment
+    # candidate that is itself nearly dead on battery and comm-isolated should
+    # get escalated, not silently committed, even though an allocator candidate
+    # technically exists.
+    from app.ml.risk_model import RiskClassifier
+
+    world = World()
+    world.add_agent(make_agent("scout-1", AgentType.SCOUT_DRONE, 0, 0))
+    risky = make_agent("scout-2", AgentType.SCOUT_DRONE, 50_000, 50_000)  # far away = comm-isolated
+    risky.battery = 3.0
+    world.add_agent(risky)
+    ledger = DecisionLedger(tmp_path / "risk.db")
+    sup = Supervisor(world, ledger, allocator=Allocator(model_path=None), risk_classifier=RiskClassifier(model_path=None))
+    sup.task_target_type["patrol-a"] = AgentType.SCOUT_DRONE
+
+    agent = world.agents["scout-1"]
+    agent.current_task = "patrol-a"
+    agent.target_position = (300.0, 300.0, agent.position[2])
+
+    try:
+        record = sup.handle_event(SimEvent(EventType.BATTERY_CRITICAL, "scout-1", {}))
+        # The only reassignment candidate (scout-2) is itself high-risk —
+        # classifier should catch this and escalate rather than commit it.
+        assert record.decision == "escalate"
+    finally:
+        ledger.close()
+
+
 def test_escalated_decision_carries_its_escalation_id(tmp_path):
     # Regression test: the frontend's Escalation Console needs this id to call
     # POST /escalation/{id}/respond — a decision record without it is unactionable.

@@ -14,12 +14,12 @@ from dataclasses import dataclass, field
 from app.ledger import DecisionLedger, DecisionRecord
 from app.ml.feasibility import compute_feasibility
 from app.ml.inference import Allocator
+from app.ml.risk_model import RiskClassifier, RiskFeatures
 from app.ml.tasks import Task
 from app.sim.entities import AgentStatus, AgentType
 from app.sim.events import EventType, SimEvent
 from app.sim.world import World
 
-RISK_ESCALATE_THRESHOLD = 0.45  # confidence below this -> escalate instead of act
 ESCALATION_TIMEOUT_SECONDS = 15.0
 
 
@@ -37,14 +37,35 @@ class PendingEscalation:
 
 
 class Supervisor:
-    def __init__(self, world: World, ledger: DecisionLedger, allocator: Allocator | None = None):
+    def __init__(
+        self,
+        world: World,
+        ledger: DecisionLedger,
+        allocator: Allocator | None = None,
+        risk_classifier: RiskClassifier | None = None,
+    ):
         self.world = world
         self.ledger = ledger
         self.allocator = allocator or Allocator()
+        self.risk_classifier = risk_classifier or RiskClassifier()
         self.pending_tasks: list[Task] = []
         self.task_target_type: dict[str, AgentType | None] = {}
         self.pending_escalations: dict[str, PendingEscalation] = {}
         self._escalation_seq = 0
+
+    def _risk_features(self, agent_id: str, feasibility) -> RiskFeatures:
+        graph = self.world.comm_graph()
+        others = max(1, len(self.world.agents) - 1)
+        comm_quality = len(graph.get(agent_id, set())) / others
+        agent = self.world.agents.get(agent_id)
+        battery_margin = (agent.battery / 100.0) if agent else 0.0
+        obstacle_density = min(1.0, len(self.world.blocked_zones) / 5.0)
+        return RiskFeatures(
+            comm_quality=comm_quality,
+            battery_margin=battery_margin,
+            obstacle_density=obstacle_density,
+            policy_confidence=feasibility.score,
+        )
 
     def required_agent_types(self) -> set[AgentType]:
         return {t for t in self.task_target_type.values() if t is not None} or set(AgentType)
@@ -118,13 +139,20 @@ class Supervisor:
 
         assignment = self.allocator.allocate([task], candidates)
         new_agent_id = assignment.get(task_id)
-        confidence = feasibility.score if new_agent_id else 0.1
 
-        if not new_agent_id or confidence < RISK_ESCALATE_THRESHOLD:
+        if not new_agent_id:
+            return self._escalate(event, feasibility, "no sufficiently confident reassignment found")
+
+        risk_features = self._risk_features(new_agent_id, feasibility)
+        risk_prob = self.risk_classifier.risk_probability(risk_features)
+        confidence = 1.0 - risk_prob
+
+        if self.risk_classifier.should_escalate(risk_features):
             return self._escalate(
                 event, feasibility,
-                "no sufficiently confident reassignment found" if not new_agent_id
-                else f"best reassignment found but confidence {confidence:.2f} below threshold",
+                f"candidate reassignment to {new_agent_id} found, but risk classifier flagged it "
+                f"(risk {risk_prob:.2f} — comm {risk_features.comm_quality:.2f}, "
+                f"battery {risk_features.battery_margin:.2f}, obstacles {risk_features.obstacle_density:.2f})",
             )
 
         # Commit the reassignment.
