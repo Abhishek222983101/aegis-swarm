@@ -27,6 +27,7 @@ from stable_baselines3.common.monitor import Monitor
 
 from app.ml.baselines import greedy_assign, hungarian_assign, total_assignment_cost
 from app.ml.env import AllocationEnv
+from app.ml.inference import Allocator
 from app.ml.tasks import Task
 
 MODELS_DIR = Path(__file__).resolve().parent.parent.parent / "models"
@@ -91,7 +92,7 @@ def train() -> Path:
     print(f"ONNX policy -> {onnx_path}")
 
     # -- baseline comparison (Phase 6.2 evidence) --------------------------
-    comparison = run_baseline_comparison(model)
+    comparison = run_baseline_comparison(model, onnx_path)
     comparison_path = MODELS_DIR / "baseline_comparison.json"
     comparison_path.write_text(json.dumps(comparison, indent=2))
     print(f"Baseline comparison -> {comparison_path}")
@@ -133,7 +134,7 @@ def _export_onnx(model: PPO, obs_dim: int, path: Path) -> None:
     )
 
 
-def run_baseline_comparison(model: PPO, n_trials: int = 30) -> dict:
+def run_baseline_comparison(model: PPO, onnx_path: Path, n_trials: int = 30) -> dict:
     """The Phase 6.2 evidence: same scenario, three approaches, SAME cost
     function, SAME problem structure for all three.
 
@@ -149,7 +150,15 @@ def run_baseline_comparison(model: PPO, n_trials: int = 30) -> dict:
     rate than greedy despite being provably optimal on the problem IT was
     solving. Caught before this shipped; fixed by making every approach solve
     the identical sequential problem.)
+
+    Second fix, same spirit: the trained_policy arm goes through the actual
+    deployed `Allocator` class (ONNX + the hard capability-eligibility mask),
+    not a raw `model.predict()` call — a raw-policy benchmark would measure
+    something that was never actually shippable, since production always
+    enforces that mask. This way the number reported is exactly what a judge
+    would see live, not an idealized/different code path.
     """
+    allocator = Allocator(model_path=onnx_path, trained_n_agents=4)
     results = {"greedy": [], "hungarian": [], "trained_policy": []}
     objective_reward = {"greedy": [], "hungarian": [], "trained_policy": []}
     battery_of_chosen = {"greedy": [], "hungarian": [], "trained_policy": []}
@@ -186,14 +195,30 @@ def run_baseline_comparison(model: PPO, n_trials: int = 30) -> dict:
         done = False
         step_idx = 0
         while not done:
-            action, _ = model.predict(obs, deterministic=True)
-            chosen_agent = env.agents[int(action)]
             task = tasks[step_idx]
-            total_cost += total_assignment_cost({task.id: chosen_agent.id}, [task], agents)
-            battery_of_chosen["trained_policy"].append(chosen_agent.battery)
-            if task.required_type is not None and chosen_agent.type != task.required_type:
-                mismatches["trained_policy"] += 1
-            obs, reward, done, _, _ = env.step(int(action))
+            # The actual deployed path: Allocator.allocate(), which applies the
+            # hard capability mask — not the raw network output.
+            assignment = allocator.allocate([task], env.agents)
+            chosen_id = assignment.get(task.id)
+
+            if chosen_id is None:
+                # No eligible agent existed for this task at all (e.g. the only
+                # agent of the required type already died) — the Allocator
+                # correctly declined to assign one. That's not a capability
+                # mismatch, it's a correctly-declined assignment; count neither
+                # cost nor a violation for it, but still need SOME action to
+                # keep env.step() advancing the episode deterministically — an
+                # arbitrary pick here is fine precisely because we don't score it.
+                action = 0
+            else:
+                action = next(i for i, a in enumerate(env.agents) if a.id == chosen_id)
+                chosen_agent = env.agents[action]
+                total_cost += total_assignment_cost({task.id: chosen_agent.id}, [task], agents)
+                battery_of_chosen["trained_policy"].append(chosen_agent.battery)
+                if task.required_type is not None and chosen_agent.type != task.required_type:
+                    mismatches["trained_policy"] += 1
+
+            obs, reward, done, _, _ = env.step(action)
             total_reward += reward
             step_idx += 1
         results["trained_policy"].append(total_cost)
