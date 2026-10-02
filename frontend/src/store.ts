@@ -10,6 +10,7 @@ interface AegisStore {
   escalations: Record<string, EscalationState>
   missionPlan: MissionPlan | null
   selectedAgentId: string | null
+  replayMode: boolean
 
   setWorldState: (s: WorldState) => void
   setConnectionStatus: (s: AegisStore['connectionStatus']) => void
@@ -17,6 +18,7 @@ interface AegisStore {
   resolveEscalation: (id: string, decision: string) => void
   setMissionPlan: (p: MissionPlan) => void
   selectAgent: (id: string | null) => void
+  setReplayMode: (on: boolean) => void
 }
 
 export const useAegisStore = create<AegisStore>((set) => ({
@@ -26,6 +28,7 @@ export const useAegisStore = create<AegisStore>((set) => ({
   escalations: {},
   missionPlan: null,
   selectedAgentId: null,
+  replayMode: false,
 
   setWorldState: (s) => set({ worldState: s }),
   setConnectionStatus: (status) => set({ connectionStatus: status }),
@@ -52,4 +55,5 @@ export const useAegisStore = create<AegisStore>((set) => ({
     })),
   setMissionPlan: (p) => set({ missionPlan: p }),
   selectAgent: (id) => set({ selectedAgentId: id }),
+  setReplayMode: (on) => set({ replayMode: on }),
 }))

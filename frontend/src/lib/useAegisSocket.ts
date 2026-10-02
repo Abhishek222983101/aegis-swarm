@@ -39,7 +39,9 @@ export function useAegisSocket() {
         }
         switch (msg.type) {
           case 'state':
-            setWorldState(msg.data)
+            // Replay mode owns worldState while active — ignore live pushes so
+            // a WiFi hiccup mid-replay can't interleave stale/fresh frames.
+            if (!useAegisStore.getState().replayMode) setWorldState(msg.data)
             break
           case 'decision':
             pushDecision(msg.data)
