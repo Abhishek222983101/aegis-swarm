@@ -33,6 +33,7 @@ export interface DecisionRecord {
   reasoning_text: string
   confidence_score: number | null
   escalated: boolean
+  escalation_id: string | null
   timestamp: number
 }
 

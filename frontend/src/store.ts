@@ -33,9 +33,13 @@ export const useAegisStore = create<AegisStore>((set) => ({
     set((state) => {
       const next = [d, ...state.decisions].slice(0, MAX_DECISIONS)
       const escalations = { ...state.escalations }
-      if (d.decision === 'escalate') {
-        // Not authoritative (the backend owns escalation ids) — this is only
-        // used to flash the HUD until the backend's own escalation event arrives.
+      if (d.decision === 'escalate' && d.escalation_id) {
+        escalations[d.escalation_id] = {
+          id: d.escalation_id,
+          reasoning: d.reasoning_text,
+          resolved: false,
+          operator_decision: null,
+        }
       }
       return { decisions: next, escalations }
     }),

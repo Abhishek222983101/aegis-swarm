@@ -122,6 +122,25 @@ app.add_middleware(
 )
 
 
+class StripServerPrefixMiddleware:
+    """Vercel Services' rewrite forwards the full path, '/server' prefix still
+    attached, to this service (see BUILD-PLAN.md §2). The Vite dev proxy mirrors
+    that exact behavior (no local rewrite) so dev and prod are never divergent —
+    this one middleware is the single place that strips the prefix, for both."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket") and scope["path"].startswith("/server"):
+            scope = dict(scope)
+            scope["path"] = scope["path"][len("/server"):] or "/"
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(StripServerPrefixMiddleware)
+
+
 @app.exception_handler(FaultTargetError)
 async def fault_target_error_handler(request: Request, exc: FaultTargetError):
     # Scenario Injector clicks must never surface a raw 500/traceback to a

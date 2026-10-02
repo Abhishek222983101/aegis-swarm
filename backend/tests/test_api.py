@@ -90,3 +90,16 @@ def test_escalations_endpoint_lists_pending(client):
     r = client.get("/escalations")
     assert r.status_code == 200
     assert r.json() == []
+
+
+def test_server_prefix_is_stripped_for_http(client):
+    # Mirrors how Vercel Services forwards requests in production (full path,
+    # /server prefix still attached) — the backend must handle both forms.
+    r = client.get("/server/health")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"
+
+
+def test_bare_path_still_works_without_prefix(client):
+    r = client.get("/health")
+    assert r.status_code == 200
