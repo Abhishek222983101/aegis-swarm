@@ -222,6 +222,7 @@ class Supervisor:
             agent_id=event.agent_id,
             confidence_score=feasibility.score,
             escalated=True,
+            escalation_id=esc_id,
         )
 
     # -- escalation resolution --------------------------------------------------

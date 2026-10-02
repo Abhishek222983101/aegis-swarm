@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+/*
+  AEGIS design tokens — a tactical/ops-console neo-brutalist system.
+  Grounded in the subject: mission control for an autonomous swarm, not a
+  generic SaaS dashboard. True black (not a tinted near-black), hazard-amber
+  as the single dominant accent, hard opaque offset shadows instead of soft
+  SaaS card shadows, thick solid borders instead of decorative stripes.
+*/
+@theme {
+  --color-ink: #000000;
+  --color-panel: #121212;
+  --color-panel-raised: #1a1a1a;
+  --color-paper: #f2f2f0;
+  --color-amber: #ffb800;
+  --color-amber-dim: #8a6400;
+  --color-signal-green: #00e676;
+  --color-signal-red: #ff3b30;
+  --color-signal-blue: #4da6ff;
+  --color-line: #2c2c2c;
+
+  --font-display: 'Archivo Black', 'Arial Black', sans-serif;
+  --font-body: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Brutalist primitives, used as utility classes throughout the app. */
+.panel {
+  background: var(--color-panel);
+  border: 3px solid var(--color-paper);
+  box-shadow: 6px 6px 0 var(--color-ink), 6px 6px 0 1px var(--color-paper);
+}
+
+.panel-amber {
+  background: var(--color-amber);
+  color: var(--color-ink);
+  border: 3px solid var(--color-ink);
+  box-shadow: 6px 6px 0 var(--color-paper);
+}
+
+.btn-brutal {
+  font-family: var(--font-body);
+  font-weight: 700;
+  border: 3px solid var(--color-paper);
+  background: var(--color-panel);
+  color: var(--color-paper);
+  padding: 0.55rem 1rem;
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  box-shadow: 4px 4px 0 var(--color-paper);
+}
+
+.btn-brutal:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--color-paper);
+}
+
+.btn-brutal:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--color-paper);
+}
+
+.btn-brutal-amber {
+  background: var(--color-amber);
+  color: var(--color-ink);
+  border-color: var(--color-ink);
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+
+.btn-brutal-amber:hover {
+  box-shadow: 6px 6px 0 var(--color-ink);
+}
+
+.btn-brutal-amber:active {
+  box-shadow: 1px 1px 0 var(--color-ink);
+}
+
+.mono-tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-ink);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border: 2px solid var(--color-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

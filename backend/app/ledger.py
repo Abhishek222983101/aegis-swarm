@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS decision_log (
     decision TEXT NOT NULL,
     reasoning_text TEXT NOT NULL,
     confidence_score REAL,
-    escalated INTEGER NOT NULL DEFAULT 0
+    escalated INTEGER NOT NULL DEFAULT 0,
+    escalation_id TEXT
 );
 """
 
@@ -37,6 +38,8 @@ class DecisionRecord:
     agent_id: str | None = None
     confidence_score: float | None = None
     escalated: bool = False
+    escalation_id: str | None = None  # set when decision == "escalate" — the id the
+    # frontend's Escalation Console needs to call POST /escalation/{id}/respond
     timestamp: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
@@ -47,6 +50,7 @@ class DecisionRecord:
             "reasoning_text": self.reasoning_text,
             "confidence_score": self.confidence_score,
             "escalated": self.escalated,
+            "escalation_id": self.escalation_id,
             "timestamp": self.timestamp,
         }
 
@@ -64,8 +68,8 @@ class DecisionLedger:
     def record(self, entry: DecisionRecord) -> int:
         cur = self._conn.execute(
             """INSERT INTO decision_log
-               (timestamp, trigger_event, agent_id, decision, reasoning_text, confidence_score, escalated)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (timestamp, trigger_event, agent_id, decision, reasoning_text, confidence_score, escalated, escalation_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 entry.timestamp,
                 entry.trigger_event,
@@ -74,6 +78,7 @@ class DecisionLedger:
                 entry.reasoning_text,
                 entry.confidence_score,
                 int(entry.escalated),
+                entry.escalation_id,
             ),
         )
         self._conn.commit()
@@ -81,13 +86,13 @@ class DecisionLedger:
 
     def recent(self, limit: int = 50) -> list[dict]:
         rows = self._conn.execute(
-            """SELECT timestamp, trigger_event, agent_id, decision, reasoning_text, confidence_score, escalated
+            """SELECT timestamp, trigger_event, agent_id, decision, reasoning_text, confidence_score, escalated, escalation_id
                FROM decision_log ORDER BY id DESC LIMIT ?""",
             (limit,),
         ).fetchall()
         cols = [
             "timestamp", "trigger_event", "agent_id", "decision",
-            "reasoning_text", "confidence_score", "escalated",
+            "reasoning_text", "confidence_score", "escalated", "escalation_id",
         ]
         return [dict(zip(cols, row)) for row in rows]
 

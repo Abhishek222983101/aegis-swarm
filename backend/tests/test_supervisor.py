@@ -113,6 +113,19 @@ def test_low_feasibility_forces_termination_regardless_of_event_type(supervisor)
     assert record.escalated is True
 
 
+def test_escalated_decision_carries_its_escalation_id(tmp_path):
+    # Regression test: the frontend's Escalation Console needs this id to call
+    # POST /escalation/{id}/respond — a decision record without it is unactionable.
+    sup, ledger = _two_agent_no_candidate_scenario(tmp_path)
+    try:
+        record = sup.handle_event(SimEvent(EventType.BATTERY_CRITICAL, "scout-1", {}))
+        assert record.decision == "escalate"
+        assert record.escalation_id is not None
+        assert record.escalation_id in sup.pending_escalations
+    finally:
+        ledger.close()
+
+
 def test_every_decision_is_written_to_the_ledger(supervisor):
     assert supervisor.ledger.count() == 0
     supervisor.handle_event(SimEvent(EventType.ROUTE_BLOCKED, None, {"zone_id": "z1"}))
