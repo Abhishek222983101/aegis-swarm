@@ -18,6 +18,7 @@ General visual rules for every slide (per template's existing look — dark navy
 - PS Name: **AI-Powered Autonomous Robot & Drone Swarm Mission Orchestration**
 - Abstract (keep to ~40-50 words, this is the box judges read first): 
   > "AEGIS is a mission-level orchestration platform that converts a natural-language objective into a coordinated multi-agent plan, dynamically reallocates tasks across a heterogeneous drone/rover swarm as conditions change in real time, and escalates to a human operator only when autonomous confidence drops — demonstrated live in an interactive 3D cockpit."
+- **Live prototype:** `https://elevate-swarm-orchestration.vercel.app` — put this directly under the abstract. Verified working end-to-end as of submission (trained ONNX policy, risk classifier, WebSocket, mission dispatch, reset all confirmed live in production, not just localhost).
 
 No other visual needed here — template's own hero image carries the slide.
 
@@ -56,18 +57,20 @@ Sub-sections: *System Architecture and Overall Workflow / Technologies, Framewor
 **Layout:** architecture diagram as the dominant visual (top ~65% of content area), tech stack as a compact badge row underneath.
 
 **System Architecture and Overall Workflow:**
-- Insert the Gemini-generated diagram from `SYSTEM-ARCHITECTURE.md` §4 here.
-- One-line caption under it: *"5-layer pipeline: Operator Cockpit → Go Orchestrator (Supervisor Loop) → ML Decision Layer (fast ONNX allocator + LLM mission planner) → Rust Simulation Core → Heterogeneous Agent Fleet."*
+- Insert the Gemini-generated diagram from `SYSTEM-ARCHITECTURE.md` §4 here (or the Mermaid diagram in §0.5, rendered).
+- One-line caption under it: *"Operator Cockpit (React/R3F) → FastAPI Supervisor (event routing, mission-feasibility, risk classifier) → ML Decision Layer (ONNX allocator + trained risk classifier) → Simulation Core (tick loop, comm graph, fault injection) → Heterogeneous Agent Fleet."*
 
 **Technologies, Frameworks and Models (badge row — small labeled boxes, not a paragraph):**
-`Rust (sim core)` · `PyTorch → ONNX Runtime (trained policy)` · `Go (orchestrator, WebSocket hub)` · `React Three Fiber (3D cockpit)` · `Redis (state fan-out)` · `PostgreSQL (decision audit log)` · `LLM Mission Planner (NL → task DAG)`
+`Python / FastAPI (single deployable service)` · `PyTorch → ONNX Runtime (trained PPO allocation policy)` · `scikit-learn (trained risk/escalation classifier)` · `React Three Fiber (3D cockpit)` · `WebSocket (live state broadcast)` · `SQLite (decision audit log)` · `Vercel Services (live deployment)`
 
-**Implementation and System Components (3 short lines, each tied to a metric if you have one by pitch time):**
-- Simulation core ticks at 30Hz, deterministic, zero-GC-pause agent state engine
-- Trained assignment policy benchmarked against Greedy and Hungarian-algorithm baselines — [X]% faster mission completion once you have the number from Build Phase 6.2
-- Frontend renders live swarm state at 60fps via a worker + SharedArrayBuffer hot path that bypasses React's render cycle entirely for position updates
+**Deliberate architecture decision — say this out loud, it's a strength not a compromise:** the system was designed as 5 polyglot microservices (Rust/Go/Redis/Postgres — documented in full in `SYSTEM-ARCHITECTURE.md`) for production scale, then *intentionally collapsed* into one lean, fast-to-build, torch-free-at-runtime Python service for the hackathon — same module boundaries, same decision logic, just one deployable unit instead of five. This is the actual, live, deployed system, not a mockup of the bigger design.
 
-**One-sentence "why polyglot" callout box** (use the line from `SYSTEM-ARCHITECTURE.md` §2): *"Each layer runs in the language built for its job, so the system stays real-time under load instead of degrading like a single-language stack would."*
+**Implementation and System Components — real, measured numbers:**
+- Allocator inference: **0.016ms average per decision** (500-call local benchmark, ONNX Runtime) — the ML decision itself is not the bottleneck anywhere in the pipeline
+- End-to-end latency on the live deployment, public internet, judge's laptop to Vercel and back: **~300ms average** (measured against the production URL, included below)
+- Mission planning is NL→tasks only at mission launch; every live replanning decision (routine or structural) runs through the fast trained-policy/baseline path with **zero LLM calls in the hot loop** — no external-API latency or failure risk during the part of the demo judges are actually watching
+
+**Honest callout, not hidden:** *"The trained policy currently has to prove it beats classical baselines — see Feasibility — the engineering (training pipeline, ONNX export, safe production fallback, hard capability constraints) is real and complete regardless of that outcome."*
 
 ---
 
@@ -77,9 +80,9 @@ Sub-sections: *Innovative Approach and Core Differentiators / Unique Features an
 **Layout:** comparison table as the dominant visual (judges love a clean comparison table — it does the differentiation argument for you).
 
 **Core Differentiators (3 bullets max):**
-- A trained policy that conditions on *predicted future state* (battery trajectory, comm degradation), not just current snapshot
-- A two-speed decision architecture — millisecond reassignment for routine events, LLM reasoning only for structural mission changes — so it's real-time where it must be and intelligent where it should be
-- Every autonomous decision is logged with a human-readable reason and traceable to a Postgres row — not a black box
+- A genuinely trained PPO policy (not a pretrained wrapper) with a reward function that weighs distance, battery health, *and* task priority together — benchmarked honestly against classical baselines on the exact same objective, not a cherry-picked metric
+- A hard-constrained ML layer: the trained policy can never violate a capability requirement (enforced by logit masking, not hoped-for from training) and automatically falls back to the proven Hungarian-optimal baseline the moment it's outside its trained envelope — this is what real production ML safety looks like, not just "trust the model"
+- Every autonomous decision is logged with a human-readable reason and traceable in the live Decision Feed and ledger — not a black box, and independently verifiable by any judge live
 
 **Comparison table** (pull directly from `SYSTEM-ARCHITECTURE.md` §7 — use the full 4-row table, format as a clean grid, bold the AEGIS column):
 Rule-based dispatch | Single-LLM "agentic" demos | Academic multi-agent RL papers | **AEGIS**
@@ -93,24 +96,26 @@ Sub-sections: *Technical and Operational Feasibility / Scalability, Deployment a
 
 **Layout:** 3-4 large stat callouts across the top (big number + small label), short text underneath each column.
 
-**Stat callouts (fill with real numbers once captured in Build Phase 6, per the metrics table in `SYSTEM-ARCHITECTURE.md` §6):**
-- `<10ms` — Allocator inference latency
-- `<1s` — event-to-replan visible latency on stage
-- `[X]` agents — sustained at 60fps in the 3D cockpit
-- `[X]%` — mission completion improvement, trained policy vs. rule-based baseline
+**Stat callouts — real, measured numbers (captured from the actual running system, not projected):**
+- `0.016ms` — Allocator inference latency (500-call local benchmark)
+- `~300ms` — end-to-end decision latency on the **live public deployment**, public internet round-trip included
+- `24 agents` — stress-tested swarm size, tick compute stayed under 0.5ms/tick average (4→24 agents tested)
+- `100%` — scenario pass rate: all 4 PRD fault scenarios (battery, comm-loss, structural replan, mission termination) verified passing live against the production URL, not just localhost or unit tests
+
+**If asked about the trained-policy-vs-baseline number specifically:** be direct — *"On our current benchmark, the trained policy doesn't yet beat Hungarian on the blended objective (6.9 vs 7.75 mean reward over 30 trials). We're presenting that honestly rather than a cherry-picked number. What's solid: it genuinely learns (reward improved ~2.6x during training), exports to ONNX, runs in production with hard capability constraints, and automatically falls back to the proven baseline outside its trained envelope — that safety pattern is the actual production-readiness story here, not a rigged benchmark."* This is a stronger answer in Q&A than an inflated claim that falls apart under one follow-up question.
 
 **Technical and Operational Feasibility (short):**
-> Every component chosen has been proven at production scale elsewhere (Rust sim engines in production RL systems, Go+Redis+WebSocket for real-time multi-agent dashboards, ONNX for latency-critical trained-model serving) — this isn't a novel unproven stack, it's a proven pattern applied to a new mission-orchestration problem.
+> This is not a mockup — it's live at `https://elevate-swarm-orchestration.vercel.app` right now, trained ML included. Every component (ONNX Runtime for latency-critical serving, WebSocket for real-time multi-agent state, FastAPI for the whole decision layer) is a proven pattern — we chose to prove it by actually shipping it, not by diagramming it.
 
 **Scalability, Deployment and Resource Requirements:**
-- Horizontally scalable: Orchestrator is stateless per-mission (state lives in Redis/Postgres), so multiple missions can run concurrently
-- Simulation core swappable for a real MAVLink/ROS2 bridge without changing the Orchestrator or frontend contract — same gRPC interface — path to real hardware is architected in, not bolted on later
-- Deployable as containers (Docker Compose for demo, same images go to Kubernetes for production)
+- Deployed today on Vercel Services (one project, frontend + backend, single public URL) — stress-tested to 24 heterogeneous agents locally with tick compute staying under 0.5ms average
+- The full production-scale design (Rust simulation core, Go orchestrator, Redis fan-out, Postgres) is documented and the module boundaries were built clean specifically so it decomposes into that without a rewrite — only extraction. This hackathon build proves the logic; that document proves we know how it scales past a hackathon
+- Simulation core's capability-abstraction boundary means swapping in a real ROS2/MAVLink data source doesn't change the Supervisor or frontend contract — same interface
 
 **Challenges, Risks and Sustainability (be honest — judges respect this):**
-- LLM-in-the-loop latency for structural replans — mitigated by keeping LLM out of the fast/routine decision path entirely
+- The trained policy doesn't yet beat classical baselines on our benchmark — stated plainly above, not hidden. The safety pattern (hard capability constraints, automatic fallback outside the trained envelope) is what makes this production-honest regardless
 - Simulation-to-reality gap if moving to physical hardware — mitigated by the capability-abstraction boundary (sensor/actuator stubs are swappable)
-- Demo network reliability — mitigated by the Redis replay-buffer "cached mode" fallback (§4.6 in architecture doc)
+- Demo network reliability — mitigated by the in-app replay-mode toggle (rolling buffer of real captured state, switchable live if WiFi drops mid-demo)
 
 ---
 
@@ -149,11 +154,11 @@ Sub-sections: *Research Background and Supporting Evidence / Datasets, Papers, S
 - Wang et al., "Dashing for the Golden Snitch: Multi-Drone Time-Optimal Motion Planning with MARL," ICRA 2025
 - "Hierarchical Trajectory (Re)Planning for a Large-Scale Swarm," arXiv:2501.16743
 - TACOS: Task-Agnostic Coordinator of a Multi-Drone System (MDPI Drones)
-- Simulation environment: self-built on Rust (no external dataset dependency — environment/fault scenarios are procedurally generated for the demo)
+- Simulation environment: self-built in Python (no external dataset dependency — environment/fault scenarios are procedurally generated for the demo)
 
 **Demo / Competitor Analysis / Links:**
-- GitHub repo: *[your repo link]*
-- Live demo: *[local/hosted link]*
+- GitHub repo: *[push the local repo at `~/elevate-swarm-orchestration` to GitHub and link it here — not done yet, that's on you]*
+- **Live demo: `https://elevate-swarm-orchestration.vercel.app`** — deployed and verified working (trained ML, WebSocket, mission dispatch, reset, all 4 fault scenarios tested live in production)
 - Nearest existing approaches referenced for comparison: rule-based dispatch systems, single-LLM agent demos, academic MARL simulators (see Slide 4 comparison table for how AEGIS differs from each)
 
 ---
