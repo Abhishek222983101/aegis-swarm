@@ -14,9 +14,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.ledger import DecisionLedger
+import random
+
+from app.ledger import DecisionLedger, DecisionRecord
 from app.ml.inference import Allocator
 from app.ml.planner import decompose_mission
+from app.ml.tasks import Task
 from app.sim import faults
 from app.sim.faults import FaultTargetError
 from app.sim.comms import CommMessage, CommScheduler
@@ -254,11 +257,52 @@ class MissionReq(BaseModel):
 
 @app.post("/mission")
 async def post_mission(req: MissionReq):
+    """Decompose the objective AND actually dispatch it — a mission that only
+    displays a task list with no agent ever moving is not a working system,
+    it's a mockup. Every task gets a world position (the planner produces
+    WHAT to do, not WHERE — this assigns reasonable WHEREs) and an agent via
+    the live Allocator, exactly the same path a fault-triggered reassignment
+    takes, so "launch mission" and "react to a fault" are the same code path."""
     plan = decompose_mission(req.objective)
-    for task in plan.tasks:
-        if task.required_type:
-            state.supervisor.task_target_type[task.id] = task.required_type
+    rng = random.Random()
+
+    allocatable_tasks: list[Task] = []
+    for mission_task in plan.tasks:
+        if mission_task.required_type:
+            state.supervisor.task_target_type[mission_task.id] = mission_task.required_type
+        position = (rng.uniform(40, 360), rng.uniform(40, 360))
+        allocatable_tasks.append(Task(
+            id=mission_task.id,
+            position=position,
+            required_type=mission_task.required_type,
+            priority=mission_task.priority,
+        ))
+
+    available_agents = [a for a in state.world.agents.values() if a.status.value != "lost"]
+    assignment = state.allocator.allocate(allocatable_tasks, available_agents)
+
+    for task in allocatable_tasks:
+        agent_id = assignment.get(task.id)
+        if not agent_id:
+            continue
+        agent = state.world.agents[agent_id]
+        agent.current_task = task.id
+        agent.target_position = (*task.position, agent.spec.cruise_altitude)
+        record = DecisionRecord(
+            trigger_event="mission_dispatch",
+            decision="reassign",
+            reasoning_text=(
+                f"Mission dispatch: '{task.id}' -> {agent_id} "
+                f"(backend: {state.allocator.backend}, target ({task.position[0]:.0f}, {task.position[1]:.0f}))."
+            ),
+            agent_id=agent_id,
+            confidence_score=1.0,
+        )
+        state.ledger.record(record)
+        await state.manager.broadcast({"type": "decision", "data": record.to_dict()})
+
     await state.manager.broadcast({"type": "mission_plan", "data": plan.to_dict()})
+    await state.manager.broadcast({"type": "state", "data": state.world.state_snapshot()})
     return plan.to_dict()
 
 

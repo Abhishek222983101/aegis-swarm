@@ -64,12 +64,39 @@ class Allocator:
             available = [a for a in agents if a.id not in taken and a.status != AgentStatus.LOST]
             if not available:
                 continue
+            if len(available) != self.trained_n_agents:
+                # Same fixed-input-size constraint as the top-level allocate()
+                # gate, but re-checked per task: a multi-task batch shrinks the
+                # candidate pool as earlier tasks consume agents, so later
+                # tasks in the SAME call can fall outside the trained envelope
+                # even when the call started inside it. Fall back per-task
+                # rather than crash or abandon the rest of the batch.
+                single_result = hungarian_assign([task], [a for a in agents if a.id not in taken])
+                if task.id in single_result:
+                    assignment[task.id] = single_result[task.id]
+                    taken.add(single_result[task.id])
+                continue
             obs = _encode_observation(task, available)
             input_name = self.session.get_inputs()[0].name
             logits = self.session.run(None, {input_name: obs[None, :].astype(np.float32)})[0]
             # Logits are only valid for the first len(available) action slots —
             # the policy was trained with a fixed agent-count action space.
             valid_logits = logits[0, : len(available)]
+
+            # Hard capability constraint: the policy is trained to prefer
+            # eligible agents but is not *guaranteed* to never violate the
+            # requirement (confirmed empirically — see
+            # models/baseline_comparison.json's capability_mismatches). A
+            # task requiring a specific agent type must NEVER go to the wrong
+            # type in production, so mask ineligible agents' logits to -inf
+            # before argmax rather than trust the model's soft preference.
+            if task.required_type is not None:
+                for i, a in enumerate(available):
+                    if a.type != task.required_type:
+                        valid_logits[i] = -np.inf
+                if np.all(np.isneginf(valid_logits)):
+                    continue  # no eligible agent in this candidate set at all
+
             best_idx = int(np.argmax(valid_logits))
             chosen = available[best_idx]
             assignment[task.id] = chosen.id

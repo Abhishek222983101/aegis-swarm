@@ -69,6 +69,19 @@ def test_mission_endpoint_returns_task_plan(client):
     assert plan["source"] == "template"  # no ANTHROPIC_API_KEY in test env
 
 
+def test_mission_endpoint_actually_dispatches_agents_not_just_displays_plan(client):
+    # Regression test: launching a mission must visibly move the swarm, not
+    # just return a task list nobody acts on — this was a real gap caught
+    # during live rehearsal (the Mission Intake panel had zero effect).
+    client.post("/mission", json={"objective": "Scout Sector 7 and establish a comm relay"})
+    state = client.get("/state").json()
+    assigned = [a for a in state["agents"] if a["current_task"] is not None]
+    assert len(assigned) >= 1, "mission dispatch assigned no agent to any task"
+
+    ledger = client.get("/ledger").json()
+    assert any(e["trigger_event"] == "mission_dispatch" for e in ledger)
+
+
 def test_ledger_endpoint_reflects_injected_events(client):
     client.post("/inject/agent-failure", json={"agent_id": "rover-1"})
     # agent-failure injection itself doesn't go through the supervisor directly in
